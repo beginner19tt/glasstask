@@ -43,6 +43,26 @@ function toLocalISO(d: Date): string {
   );
 }
 
+/**
+ * Japanese attaches a particle to a time expression: 来週**の**引っ越し,
+ * 金曜**に**歯医者, 明後日**までに**提出. Lifting the date out of the memo
+ * leaves that particle stranded at the front of the title.
+ *
+ * Only the particle sitting where the date was removed is dropped - the ones
+ * inside the remaining words are untouched, so 歯医者の予約 keeps its の.
+ * Longest first, or まで would eat the front of までに.
+ */
+const STRANDED_PARTICLE = /^\s*(?:までに|まで|からは|から|には|にも|のは|[のにはへ])\s*/;
+const TRAILING_PARTICLE = /\s*(?:までに|まで|からは|から|には|にも|のは|[のにはへ])\s*$/;
+
+export function dropStrandedParticles(title: string): string {
+  const withoutLeading = title.replace(STRANDED_PARTICLE, '');
+  const candidate = (withoutLeading || title).replace(TRAILING_PARTICLE, '');
+  // Never let the cleanup empty the title: a memo that is only a particle is
+  // still what the person typed.
+  return candidate.trim() || withoutLeading.trim() || title.trim();
+}
+
 export function parseQuickInput(raw: string, now: Date = new Date()): ParsedInput {
   let text = raw;
   const hints: string[] = [];
@@ -70,6 +90,8 @@ export function parseQuickInput(raw: string, now: Date = new Date()): ParsedInpu
 
   // --- date -----------------------------------------------------------------
   let due: Date | null = null;
+  /** Set when a date or time token was lifted out, which may strand a particle. */
+  let cutTemporal = false;
 
   const relative: Array<[RegExp, number, string]> = [
     [/今日|きょう|\btoday\b/i, 0, '今日'],
@@ -82,6 +104,7 @@ export function parseQuickInput(raw: string, now: Date = new Date()): ParsedInpu
     if (m) {
       due = startOfDay(now, offset);
       text = text.replace(re, ' ');
+      cutTemporal = true;
       hints.push(hint);
       break;
     }
@@ -96,6 +119,7 @@ export function parseQuickInput(raw: string, now: Date = new Date()): ParsedInpu
         const delta = (target - now.getDay() + 7) % 7 || 7;
         due = startOfDay(now, delta);
         text = text.replace(wd[0], ' ');
+        cutTemporal = true;
         hints.push(wd[0]);
       }
     }
@@ -115,6 +139,7 @@ export function parseQuickInput(raw: string, now: Date = new Date()): ParsedInpu
         }
         due = candidate;
         text = text.replace(md[0], ' ');
+        cutTemporal = true;
         hints.push(`${month}/${day}`);
       }
     }
@@ -130,11 +155,13 @@ export function parseQuickInput(raw: string, now: Date = new Date()): ParsedInpu
       base.setHours(hour, minute, 0, 0);
       due = base;
       text = text.replace(time[0], ' ');
+      cutTemporal = true;
       hints.push(`${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
     }
   }
 
-  const title = text.replace(/\s+/g, ' ').trim();
+  const collapsed = text.replace(/\s+/g, ' ').trim();
+  const title = cutTemporal ? dropStrandedParticles(collapsed) : collapsed;
 
   return {
     title: title || raw.trim(),

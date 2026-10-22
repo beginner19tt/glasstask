@@ -147,3 +147,44 @@ describe('rebuildInput round-trip', () => {
     expect(text).toBe('書類 11/3');
   });
 });
+
+describe('stranded particles', () => {
+  it('drops the particle the date was attached to', () => {
+    expect(parseQuickInput('来週の引っ越しの準備', NOW).title).toBe('引っ越しの準備');
+    expect(parseQuickInput('金曜に歯医者の予約を取る', NOW).title).toBe('歯医者の予約を取る');
+    expect(parseQuickInput('明後日までに提出', NOW).title).toBe('提出');
+    expect(parseQuickInput('明日は定例会議', NOW).title).toBe('定例会議');
+    expect(parseQuickInput('来週から新プロジェクト', NOW).title).toBe('新プロジェクト');
+  });
+
+  it('leaves particles inside the remaining words alone', () => {
+    expect(parseQuickInput('明日 歯医者の予約', NOW).title).toBe('歯医者の予約');
+    expect(parseQuickInput('来週の母の日の準備', NOW).title).toBe('母の日の準備');
+  });
+
+  it('cleans up a particle left dangling at the end', () => {
+    expect(parseQuickInput('提出は明日', NOW).title).toBe('提出');
+    expect(parseQuickInput('打ち合わせは10/29', NOW).title).toBe('打ち合わせ');
+  });
+
+  it('handles a date written with a separating space', () => {
+    expect(parseQuickInput('10/29 の打ち合わせ', NOW).title).toBe('打ち合わせ');
+  });
+
+  it('never empties the title', () => {
+    // The memo is a date and a particle and nothing else.
+    const result = parseQuickInput('明日の', NOW);
+    expect(result.title.length).toBeGreaterThan(0);
+    expect(result.dueAt).not.toBeNull();
+  });
+
+  it('does not touch a memo that had no date at all', () => {
+    expect(parseQuickInput('東京に行く', NOW).title).toBe('東京に行く');
+    expect(parseQuickInput('牛乳の買い置き', NOW).title).toBe('牛乳の買い置き');
+    expect(parseQuickInput('resume は更新済み', NOW).title).toBe('resume は更新済み');
+  });
+
+  it('leaves English memos unchanged', () => {
+    expect(parseQuickInput('tomorrow review the deck', NOW).title).toBe('review the deck');
+  });
+});
