@@ -75,8 +75,32 @@ Test Files  6 passed (6)
 7. **レーンのタブが 375px 幅で見切れていた** — 余白を詰めて 5 レーンが収まるようにし、それでも溢れる場合に備えてスクロール＋端のフェード＋選択時の自動スクロールを実装（`src/components/LaneRail.tsx`）。
 8. **入力欄にフォーカスリングの四角が出てガラスを割っていた** — コンポーザーのみリングを外し、面全体の発光でフォーカスを示すよう変更。
 
+## 4. 本番デプロイ後の検証
+
+`https://glasstask.moufu.workers.dev` / Chromium (375×812)
+
+| # | 内容 | 期待 | 結果 |
+|---|---|---|---|
+| P1 | `GET /api/health` | JSON を返す | ✅（当初は SPA の HTML を返していた。修正済み） |
+| P2 | `POST /api/auth/dev` | **404** | ✅ `{"error":"disabled"}` — ホスト名ゲートが本番で閉じていることを実地で確認 |
+| P3 | `GET /api/health` の `devAuth` | `false` | ✅ |
+| P4 | `GET /api/tasks`（未認証） | 401 | ✅ |
+| P5 | `GET /api/auth/google`（未設定） | 503 | ✅ |
+| P6 | `/` | SPA が描画 | ✅ コンポーザーに自動フォーカス、5 レーン表示 |
+| P7 | `/some/deep/route` | SPA フォールバック | ✅ 200 + index.html |
+| P8 | 未サインインでのキャプチャ | 即時表示 + キュー | ✅ `本番確認 明日 9:00 #deploy !` → 期限 `2026-10-23T09:00+09:00`、タグ、優先度すべて解決。未同期チップ `1` |
+
+### 本番で見つけて直したもの
+
+9. **`/api/*` が Worker に届かず SPA の HTML を返していた** — Workers Static Assets は
+   アセットを先に処理し、SPA フォールバックで未知のパスに index.html を返すため、
+   API 呼び出しがすべて HTML になっていた。`assets.run_worker_first: ["/api/*"]` を
+   追加して解決。**ローカルの Vite プラグインは `/api/*` を先に Worker へ回すため、
+   この差は本番でしか出ない。**
+
 ## 検証していないもの
 
-- **本番の Google OAuth フロー** — `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` が必要なため未実施。コード経路（PKCE 生成・state 検証・トークン交換・`id_token` 展開・ユーザー upsert）は実装済みで、未設定時に 503 を返すところまでは確認済み。
-- **実モデルの Workers AI 応答** — ローカルに Workers AI のエミュレータが無いため、決定的フォールバック経路のみ検証。`CF_REMOTE_BINDINGS=1` + `wrangler login` で実モデルに接続できる。
+- **本番の Google OAuth フロー** — `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` 未設定のため未実施。コード経路（PKCE 生成・state 検証・トークン交換・`id_token` 展開・ユーザー upsert）は実装済みで、未設定時に 503 を返すところまでは本番で確認済み。
+- **実モデルの Workers AI 応答** — `/api/ai/*` はセッション必須で、本番ではローカルサインインが閉じているため、Google サインインが通るまで実行できない。ローカルでは決定的フォールバック経路のみ検証済み。
+- **本番 D1 への書き込み** — 同じ理由で、サインインを伴う同期経路は未実行。スキーマ自体は本番 DB に適用済みで `tasks` / `users` を確認。
 - **実機の iOS Safari / Android Chrome** — Chromium のモバイルエミュレーションのみ。`backdrop-filter: url()` は `@supports` でガードしてあるので、非対応環境では通常のぼかしに落ちる。

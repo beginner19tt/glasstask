@@ -6,7 +6,13 @@
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // Static assets are served before the Worker runs, and with SPA
+    // fallback an unmatched path returns index.html -- which would answer
+    // every /api/* request with the HTML shell instead of reaching the
+    // Worker. Route the API to the Worker first; everything else still
+    // comes off the asset server.
+    "run_worker_first": ["/api/*"]
   },
   "observability": {
     "enabled": true
