@@ -22,7 +22,7 @@
       "database_name": "glasstask-db",
       // Replace with the id printed by `wrangler d1 create glasstask-db`.
       // Local dev (miniflare) ignores this value.
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_id": "88d0f0c1-35ed-40c5-81d4-6fc55ef98b74",
       "migrations_dir": "migrations"
     }
   ],
