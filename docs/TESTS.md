@@ -98,9 +98,40 @@ Test Files  6 passed (6)
    追加して解決。**ローカルの Vite プラグインは `/api/*` を先に Worker へ回すため、
    この差は本番でしか出ない。**
 
+## 5. 本番 + 実モデルでの検証
+
+Google サインイン設定後。`https://glasstask.moufu.workers.dev` と、
+`CF_REMOTE_BINDINGS=1 npm run dev`（実 Workers AI に接続したローカル）。
+
+| # | 内容 | 期待 | 結果 |
+|---|---|---|---|
+| R1 | Google サインイン | セッション発行 | ✅ `google:1096181…`、email / name / picture が id_token から取得できている |
+| R2 | 未サインイン時に書いたタスクの同期 | 本番 D1 に到達 | ✅ `/api/tasks/sync` で再送、キュー空に |
+| R3 | 本番 D1 の内容 | タイトル・タグ・優先度・期限が保持 | ✅ |
+| R4 | `/api/ai/structure`（実モデル） | `source: "ai"` | ✅ `来週の引っ越しの準備いろいろ` → title `引っ越し準備` / note / tags `[引っ越し, 家]` / priority 1 / subtasks 4 件（約 1.8 秒） |
+| R5 | `/api/ai/plan`（実モデル） | 番号付きの順序リスト | ✅ `1. ジムに行く / 2. 歯医者 / 3. 月次レポート / 4. 請求書を送る`（約 1.7 秒） |
+| R6 | Workers AI のモデル ID | アカウントで利用可能 | ✅ `wrangler ai models` に `@cf/meta/llama-3.3-70b-instruct-fp8-fast` が存在 |
+
+### 実モデルで初めて見つかって直したもの
+
+10. **`/api/ai/plan` がタスクを増殖させていた** — 素の `prompt` を渡していたため、
+    instruct モデルが入力の書式を continuation し、リストをそのまま返した上に
+    存在しない行を生成していた。chat ロール（system + user）に変更し、さらに
+    「リストに存在するタイトルを、重複なく、5 行まで」という契約を
+    `takeOrderedLines()` でコード側から強制。守れなければ決定的順序にフォールバックする。
+
+11. **`/api/ai/structure` が毎回ローカル解析に落ちていた** — 10 の修正で chat 形式に
+    変えた副作用。Workers AI は `prompt` には `{ response: "..." }` を返すが、
+    `messages` には **OpenAI 互換の chat completion 形状**（`choices[0].message.content`）
+    を返す。`response` だけを読んでいたため非文字列が渡り、`extractJson` が
+    `raw.indexOf is not a function` で例外を投げ、**モデル障害を吸収するための
+    catch がそれを握りつぶしていた**。ハードなバグがモデル不調と同じ見た目になっていた。
+    `responseText()` で両方の形状に対応し、`extractJson` は非文字列に対して
+    例外ではなく `null` を返すようにして、同じ隠蔽が二度と起きないようにした。
+
 ## 検証していないもの
 
-- **本番の Google OAuth フロー** — `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` 未設定のため未実施。コード経路（PKCE 生成・state 検証・トークン交換・`id_token` 展開・ユーザー upsert）は実装済みで、未設定時に 503 を返すところまでは本番で確認済み。
-- **実モデルの Workers AI 応答** — `/api/ai/*` はセッション必須で、本番ではローカルサインインが閉じているため、Google サインインが通るまで実行できない。ローカルでは決定的フォールバック経路のみ検証済み。
-- **本番 D1 への書き込み** — 同じ理由で、サインインを伴う同期経路は未実行。スキーマ自体は本番 DB に適用済みで `tasks` / `users` を確認。
-- **実機の iOS Safari / Android Chrome** — Chromium のモバイルエミュレーションのみ。`backdrop-filter: url()` は `@supports` でガードしてあるので、非対応環境では通常のぼかしに落ちる。
+- **上記 10・11 の修正後の本番での AI 応答** — 修正は実モデルに接続したローカル（`CF_REMOTE_BINDINGS=1`）で検証済み。本番は同一コードだが、ブラウザのセッションが切れたため修正後の再確認は未実施。
+- **実機の iOS Safari / Android Chrome** — Chromium のモバイルエミュレーションのみ。
+- **サーバ側の相対日付解決のタイムゾーン** — `POST /api/tasks` に `raw` を渡した場合のみ Worker のタイムゾーン（本番は UTC）で解決される。ブラウザ経由の通常経路は解決済みの `dueAt` を送るため影響しない。
+
