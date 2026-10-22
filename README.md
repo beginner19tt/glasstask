@@ -33,13 +33,46 @@ npx tsc -b        # 型チェック（app / worker / node の 3 プロジェク�
 
 ## デプロイ
 
-```bash
+```powershell
 npx wrangler login
+.\scripts\deploy.ps1
+```
+
+`deploy.ps1` は再実行可能で、D1 の作成 → `wrangler.jsonc` への id 反映 →
+マイグレーション → ビルド → デプロイ → `SESSION_SECRET` の生成までを行う。
+生成した秘密鍵は wrangler に直接パイプされ、画面にもディスクにも残らない。
+
+手で順に実行する場合:
+
+```bash
 npx wrangler d1 create glasstask-db          # 出力された id を wrangler.jsonc に書く
 npm run db:migrate:remote
 openssl rand -hex 32 | npx wrangler secret put SESSION_SECRET
 npm run deploy
 ```
+
+### `wrangler login` が通らない場合
+
+`wrangler login` は `http://localhost:8976/oauth/callback` で認可コードを待ち受ける。
+ブラウザからこのポートに戻れない環境（ファイアウォール、WSL、リモートシェル、
+承認がタイムアウト窓に間に合わない場合など）では、API トークンを使うほうが確実。
+
+1. [API トークン](https://dash.cloudflare.com/profile/api-tokens) → **トークンを作成**
+2. テンプレート **「Cloudflare Workers を編集する」** を選ぶ。
+   自分で組む場合に必要な権限は以下:
+   - アカウント / Workers スクリプト / 編集
+   - アカウント / D1 / 編集
+   - アカウント / Workers AI / 編集
+   - アカウント / アカウント設定 / 読み取り
+   - ユーザー / ユーザーの詳細 / 読み取り
+3. 発行されたトークンをそのシェルに入れて実行する:
+
+```powershell
+$env:CLOUDFLARE_API_TOKEN = 'ここにトークン'
+.\scripts\deploy.ps1
+```
+
+環境変数はそのタブ内だけで有効。恒久的に置きたくない場合はこれで十分。
 
 これで `https://glasstask.<subdomain>.workers.dev` が立ち上がる。
 Google サインインはまだ出ないが、他は動く。
