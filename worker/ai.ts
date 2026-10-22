@@ -43,8 +43,39 @@ function stringArray(value: unknown, limit: number): string[] {
     .slice(0, limit);
 }
 
+/**
+ * Workers AI answers in two shapes. A bare `prompt` comes back as
+ * `{ response: "..." }`, while `messages` comes back in the OpenAI
+ * chat-completion shape, with the text under `choices[0].message.content`.
+ * Reading only `response` silently yielded nothing - or a non-string - the
+ * moment this module moved to chat roles, so take whichever is actually there.
+ */
+export function responseText(result: unknown): string {
+  if (typeof result !== 'object' || result === null) return '';
+  const r = result as Record<string, unknown>;
+
+  if (typeof r.response === 'string') return r.response;
+
+  const choices = r.choices;
+  if (Array.isArray(choices) && choices.length > 0) {
+    const first = choices[0] as Record<string, unknown> | undefined;
+    const message = first?.message as Record<string, unknown> | undefined;
+    if (typeof message?.content === 'string') return message.content;
+    if (typeof first?.text === 'string') return first.text;
+  }
+
+  // Some models nest the old shape one level down.
+  if (typeof r.response === 'object' && r.response !== null) {
+    const nested = r.response as Record<string, unknown>;
+    if (typeof nested.response === 'string') return nested.response;
+  }
+
+  return '';
+}
+
 /** Pulls the first balanced JSON object out of a model response. */
-export function extractJson(raw: string): unknown {
+export function extractJson(raw: unknown): unknown {
+  if (typeof raw !== 'string') return null;
   const start = raw.indexOf('{');
   if (start === -1) return null;
   let depth = 0;
@@ -104,27 +135,68 @@ export async function structureTask(
   now = new Date(),
 ): Promise<Structured> {
   const local = parseQuickInput(text, now);
-  const prompt = [
+  // Chat roles, not a bare prompt: an instruct model handed a raw prompt tends
+  // to continue the text it was given instead of answering it.
+  const system = [
     'You turn one line of a captured memo into a task record.',
     'Reply with JSON only, no prose, using exactly these keys:',
     '{"title":string,"note":string,"tags":string[],"priority":0|1|2,"due_at":string|null,"subtasks":string[]}',
     `Today is ${now.toISOString().slice(0, 10)}. due_at must be ISO 8601 or null.`,
     'Keep title under 60 characters and in the same language as the memo.',
     'priority: 0 normal, 1 important, 2 urgent. subtasks: at most 4, only if the memo clearly implies steps.',
-    '',
-    `Memo: ${text}`,
   ].join('\n');
 
   try {
     const response = (await ai.run(MODEL, {
-      prompt,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: text },
+      ],
       max_tokens: 400,
       temperature: 0.2,
-    })) as { response?: string };
-    return mergeStructured(local, extractJson(response.response ?? ''));
-  } catch {
+    })) as unknown;
+    const raw = responseText(response);
+    const parsed = extractJson(raw);
+    if (!parsed) {
+      // Falling back is correct, but silently is not: a model that stops
+      // returning JSON would otherwise look like a quiet quality regression.
+      console.warn('ai.structure: no JSON in model output', JSON.stringify(raw.slice(0, 300)));
+    }
+    return mergeStructured(local, parsed);
+  } catch (error) {
+    console.warn('ai.structure: model call failed', String(error));
     return { ...mergeStructured(local, null) };
   }
+}
+
+/**
+ * Keeps only what the plan contract allows: numbered lines naming a task that
+ * actually exists, each one once, five at most.
+ *
+ * An instruct model asked to reorder a list will sometimes continue the input
+ * format instead of answering it, echoing the list back and inventing more
+ * rows. Rather than trust the prose, we take the lines that fit the contract
+ * and let the caller fall back to the deterministic order if nothing does.
+ */
+export function takeOrderedLines(
+  raw: string,
+  tasks: ReadonlyArray<{ title: string }>,
+): string {
+  const titles = new Set(tasks.map((t) => t.title));
+  const seen = new Set<string>();
+  const kept: string[] = [];
+
+  for (const line of raw.split('\n')) {
+    const match = line.trim().match(/^(\d{1,2})[.)]\s+(.*)$/);
+    if (!match) continue;
+    const title = match[2].trim().replace(/\s*\(due [^)]*\)\s*$/, '');
+    if (!titles.has(title) || seen.has(title)) continue;
+    seen.add(title);
+    kept.push(`${kept.length + 1}. ${title}`);
+    if (kept.length === 5) break;
+  }
+
+  return kept.join('\n');
 }
 
 export async function planDay(
@@ -138,21 +210,24 @@ export async function planDay(
 
   if (tasks.length === 0) return { plan: '', source: 'local' };
 
-  const prompt = [
-    'You are a terse planning assistant. Given a task list, output an ordered plan.',
-    'Rules: at most 5 lines, one task per line, prefix each with its 1-based order.',
-    'No preamble, no closing remarks, no headings. Same language as the tasks.',
-    '',
-    lines,
+  const system = [
+    'You order a task list for today. Reply with the ordered list and nothing else.',
+    'At most 5 lines. Every line is exactly "<n>. <task title>", numbered from 1.',
+    'Use only titles from the list, never invent one, never repeat one.',
+    'No preamble, no closing remarks, no headings, no status or priority markers.',
+    'Write the titles in the language they are given in.',
   ].join('\n');
 
   try {
     const response = (await ai.run(MODEL, {
-      prompt,
-      max_tokens: 300,
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: lines },
+      ],
+      max_tokens: 200,
       temperature: 0.3,
-    })) as { response?: string };
-    const plan = (response.response ?? '').trim();
+    })) as unknown;
+    const plan = takeOrderedLines(responseText(response), tasks);
     if (plan) return { plan, source: 'ai' };
   } catch {
     // fall through to the deterministic ordering below
