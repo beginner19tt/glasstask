@@ -1,4 +1,5 @@
 import type { Task } from '../../shared/task';
+import type { ParsedInput } from '../../shared/parse';
 
 export interface User {
   id: string;
@@ -44,7 +45,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ tasks }),
     }),
-  structure: (text: string) =>
+  structure: (text: string, local: ParsedInput) =>
     request<{
       title: string;
       note: string;
@@ -53,6 +54,6 @@ export const api = {
       dueAt: string | null;
       subtasks: string[];
       source: 'ai' | 'local';
-    }>('/api/ai/structure', { method: 'POST', body: JSON.stringify({ text }) }),
+    }>('/api/ai/structure', { method: 'POST', body: JSON.stringify({ text, local }) }),
   plan: () => request<{ plan: string; source: 'ai' | 'local' }>('/api/ai/plan', { method: 'POST' }),
 };

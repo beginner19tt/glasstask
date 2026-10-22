@@ -5,6 +5,7 @@
  */
 
 import { parseQuickInput } from '../shared/parse';
+import type { ParsedInput } from '../shared/parse';
 import type { Priority } from '../shared/task';
 
 const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
@@ -133,8 +134,16 @@ export async function structureTask(
   ai: AiBinding,
   text: string,
   now = new Date(),
+  /**
+   * The parse the browser already did. Relative dates like "来週" resolve
+   * against a calendar day, and the Worker's calendar is UTC while the
+   * person's is not: parsing here would hand a Tokyo user a due time nine
+   * hours off. The client has the right clock, so when it sends its parse we
+   * use it, and only fall back to parsing here for direct API callers.
+   */
+  clientParse?: ParsedInput,
 ): Promise<Structured> {
-  const local = parseQuickInput(text, now);
+  const local = clientParse ?? parseQuickInput(text, now);
   // Chat roles, not a bare prompt: an instruct model handed a raw prompt tends
   // to continue the text it was given instead of answering it.
   const system = [

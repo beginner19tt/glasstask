@@ -194,3 +194,38 @@ describe('extractJson is defensive about the value it is handed', () => {
     expect(extractJson(null)).toBeNull();
   });
 });
+
+describe('structureTask uses the client parse when given one', () => {
+  const ai = {
+    run: async () => ({ response: '{"title":"引っ越し準備","tags":["引っ越し"],"priority":1}' }),
+  };
+
+  it('keeps the due date the browser resolved, not one parsed server-side', async () => {
+    const { structureTask } = await import('../worker/ai');
+    // The browser resolved 来週 against its own calendar (JST).
+    const clientParse = {
+      title: '引っ越しの準備',
+      tags: [],
+      priority: 0 as const,
+      dueAt: '2026-10-29T09:00:00+09:00',
+      hints: [],
+    };
+    const result = await structureTask(ai, '来週の引っ越しの準備', new Date(2026, 9, 22), clientParse);
+    expect(result.dueAt).toBe('2026-10-29T09:00:00+09:00');
+    expect(result.title).toBe('引っ越し準備');
+  });
+
+  it('still parses server-side for callers that send no local parse', async () => {
+    const { structureTask } = await import('../worker/ai');
+    const result = await structureTask(ai, '明日 請求書', new Date(2026, 9, 22, 11, 30));
+    expect(result.dueAt).not.toBeNull();
+    expect(result.source).toBe('ai');
+  });
+
+  it('lets an explicit client priority win over the model', async () => {
+    const { structureTask } = await import('../worker/ai');
+    const clientParse = { title: '引っ越し', tags: [], priority: 2 as const, dueAt: null, hints: [] };
+    const result = await structureTask(ai, '引っ越し !!', new Date(2026, 9, 22), clientParse);
+    expect(result.priority).toBe(2);
+  });
+});

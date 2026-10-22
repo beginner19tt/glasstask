@@ -69,7 +69,9 @@ export function Composer({ onCapture, onFirstKeystroke, onNotice }: Props) {
     if (!text || thinking) return;
     setThinking(true);
     try {
-      const result = await api.structure(text);
+      // Send our own parse: it resolved any relative date against the
+      // browser's calendar, which is the one the user lives in.
+      const result = await api.structure(text, parseQuickInput(text));
       setValue(rebuildInput(result));
       onNotice(result.source === 'ai' ? 'Workers AI で整形' : 'ローカル解析で整形');
       inputRef.current?.focus({ preventScroll: true });

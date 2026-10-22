@@ -10,6 +10,7 @@ import { planDay, structureTask } from './ai';
 import type { Lane, Priority, Task } from '../shared/task';
 import { LANES } from '../shared/task';
 import { parseQuickInput } from '../shared/parse';
+import type { ParsedInput } from '../shared/parse';
 
 type Variables = { session: SessionPayload };
 
@@ -151,11 +152,26 @@ app.post('/api/tasks/sync', async (c) => {
   return c.json({ accepted, tasks });
 });
 
+// `local` is the browser's own parse. It carries the user's timezone, which
+// the Worker does not have; see structureTask. Validated like any other input.
+function asClientParse(value: unknown): ParsedInput | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const o = value as Record<string, unknown>;
+  if (typeof o.title !== 'string') return undefined;
+  return {
+    title: o.title.slice(0, 200),
+    tags: asTags(o.tags),
+    priority: asPriority(o.priority),
+    dueAt: asIso(o.dueAt),
+    hints: [],
+  };
+}
+
 app.post('/api/ai/structure', async (c) => {
-  const body = (await c.req.json().catch(() => ({}))) as { text?: unknown };
+  const body = (await c.req.json().catch(() => ({}))) as { text?: unknown; local?: unknown };
   const text = typeof body.text === 'string' ? body.text.trim().slice(0, 500) : '';
   if (!text) return c.json({ error: 'text_required' }, 400);
-  return c.json(await structureTask(c.env.AI, text));
+  return c.json(await structureTask(c.env.AI, text, new Date(), asClientParse(body.local)));
 });
 
 app.post('/api/ai/plan', async (c) => {
