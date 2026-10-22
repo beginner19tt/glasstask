@@ -55,7 +55,16 @@ npm run deploy
 
 `wrangler login` は `http://localhost:8976/oauth/callback` で認可コードを待ち受ける。
 ブラウザからこのポートに戻れない環境（ファイアウォール、WSL、リモートシェル、
-承認がタイムアウト窓に間に合わない場合など）では、API トークンを使うほうが確実。
+コンテナなど）では `Timed out waiting for authorization code` で失敗し続ける。
+
+まずデバイスフローを試す。コールバックを使わず、画面のコードを
+ダッシュボードに入力するだけで済む:
+
+```bash
+npx wrangler login --device
+```
+
+それでも駄目なら API トークンを使う。
 
 1. [API トークン](https://dash.cloudflare.com/profile/api-tokens) → **トークンを作成**
 2. テンプレート **「Cloudflare Workers を編集する」** を選ぶ。
@@ -72,7 +81,9 @@ $env:CLOUDFLARE_API_TOKEN = 'ここにトークン'
 .\scripts\deploy.ps1
 ```
 
-環境変数はそのタブ内だけで有効。恒久的に置きたくない場合はこれで十分。
+環境変数はそのタブ内だけで有効なので、マシンに残らない。
+`.env` に `CLOUDFLARE_API_TOKEN=...` と書いても wrangler は読む
+（`.env` は gitignore 済み。使い終わったら消してよい）。
 
 これで `https://glasstask.<subdomain>.workers.dev` が立ち上がる。
 Google サインインはまだ出ないが、他は動く。
