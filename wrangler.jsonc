@@ -26,8 +26,14 @@
       "migrations_dir": "migrations"
     }
   ],
-  "vars": {
-    "APP_ORIGIN": "http://localhost:5173",
-    "DEV_AUTH": "1"
-  }
+  // No vars by default, on purpose.
+  //
+  // APP_ORIGIN defaults to the origin the request arrived on, which is right
+  // both locally and on workers.dev; set it only behind a proxy or custom
+  // domain the Worker cannot see.
+  //
+  // The local-only sign-in is keyed on the request host, not on a var, so it
+  // cannot be deployed by forgetting to flip a flag. Set DEV_AUTH to "0" to
+  // turn it off locally as well.
+  "vars": {}
 }

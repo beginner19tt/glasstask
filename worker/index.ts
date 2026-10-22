@@ -23,7 +23,7 @@ const PUBLIC_PATHS = new Set(['/api/health']);
 
 app.use('/api/*', async (c, next) => {
   if (c.req.path.startsWith('/api/auth') || PUBLIC_PATHS.has(c.req.path)) return next();
-  const session = await currentSession(c.env, getCookie(c, SESSION_COOKIE));
+  const session = await currentSession(c.env, new URL(c.req.url), getCookie(c, SESSION_COOKIE));
   if (!session) return c.json({ error: 'unauthorized' }, 401);
   c.set('session', session);
   return next();
@@ -32,7 +32,7 @@ app.use('/api/*', async (c, next) => {
 app.get('/api/health', (c) =>
   c.json({
     ok: true,
-    devAuth: isDevAuth(c.env),
+    devAuth: isDevAuth(c.env, new URL(c.req.url)),
     googleConfigured: Boolean(c.env.GOOGLE_CLIENT_ID),
   }),
 );

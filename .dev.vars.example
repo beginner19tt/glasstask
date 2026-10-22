@@ -1,6 +1,7 @@
-# Copy to .dev.vars for local development. All three are optional locally:
-# without them, DEV_AUTH=1 provides a local sign-in and the AI routes fall back
-# to the deterministic parser. In production set them with `wrangler secret put`.
+# Copy to .dev.vars for local development. All of these are optional locally:
+# the local-only sign-in is enabled by any request to localhost, and the AI
+# routes fall back to the deterministic parser. In production set the three
+# secrets with `wrangler secret put`.
 
 # openssl rand -hex 32
 SESSION_SECRET=
@@ -9,3 +10,8 @@ SESSION_SECRET=
 # Authorized redirect URI: https://<your-origin>/api/auth/callback
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
+
+# Set to 0 to disable the local-only sign-in during local development too.
+# It is already impossible to reach on a deployed Worker, which is keyed on the
+# request host rather than on this var.
+# DEV_AUTH=0

@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
 import type { AppEnv } from './env';
-import { isDevAuth, sessionSecret } from './env';
+import { isDevAuth, publicOrigin, sessionSecret } from './env';
 import {
   createSessionToken,
   readSessionToken,
@@ -53,32 +53,29 @@ function decodeIdToken(idToken: string): Record<string, unknown> | null {
   }
 }
 
-function originOf(env: AppEnv, url: URL): string {
-  return env.APP_ORIGIN && env.APP_ORIGIN.startsWith('http') ? env.APP_ORIGIN : url.origin;
-}
-
 function secureCookie(url: URL): boolean {
   return url.protocol === 'https:';
 }
 
 export async function currentSession(
   env: AppEnv,
+  url: URL,
   cookieValue: string | undefined,
 ): Promise<SessionPayload | null> {
-  return readSessionToken(cookieValue, sessionSecret(env));
+  return readSessionToken(cookieValue, sessionSecret(env, url));
 }
 
 export const authRoutes = new Hono<{ Bindings: AppEnv }>();
 
 authRoutes.get('/google', async (c) => {
   const env = c.env;
+  const url = new URL(c.req.url);
   if (!env.GOOGLE_CLIENT_ID) return c.json({ error: 'google_not_configured' }, 503);
 
-  const url = new URL(c.req.url);
   const state = randomString(16);
   const verifier = randomString(48);
   const payload: OAuthState = { state, verifier, exp: Math.floor(Date.now() / 1000) + 600 };
-  setCookie(c, OAUTH_COOKIE, await sign(payload, sessionSecret(env)), {
+  setCookie(c, OAUTH_COOKIE, await sign(payload, sessionSecret(env, url)), {
     httpOnly: true,
     sameSite: 'Lax',
     secure: secureCookie(url),
@@ -88,7 +85,7 @@ authRoutes.get('/google', async (c) => {
 
   const authUrl = new URL(GOOGLE_AUTH);
   authUrl.searchParams.set('client_id', env.GOOGLE_CLIENT_ID);
-  authUrl.searchParams.set('redirect_uri', originOf(env, url) + '/api/auth/callback');
+  authUrl.searchParams.set('redirect_uri', publicOrigin(env, url) + '/api/auth/callback');
   authUrl.searchParams.set('response_type', 'code');
   authUrl.searchParams.set('scope', 'openid email profile');
   authUrl.searchParams.set('state', state);
@@ -103,7 +100,7 @@ authRoutes.get('/callback', async (c) => {
   const url = new URL(c.req.url);
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
-  const stored = await verify<OAuthState>(getCookie(c, OAUTH_COOKIE) ?? '', sessionSecret(env));
+  const stored = await verify<OAuthState>(getCookie(c, OAUTH_COOKIE) ?? '', sessionSecret(env, url));
   deleteCookie(c, OAUTH_COOKIE, { path: '/' });
 
   if (!code || !state || !stored || stored.state !== state || stored.exp * 1000 < Date.now()) {
@@ -120,7 +117,7 @@ authRoutes.get('/callback', async (c) => {
       code,
       client_id: env.GOOGLE_CLIENT_ID,
       client_secret: env.GOOGLE_CLIENT_SECRET,
-      redirect_uri: originOf(env, url) + '/api/auth/callback',
+      redirect_uri: publicOrigin(env, url) + '/api/auth/callback',
       grant_type: 'authorization_code',
       code_verifier: stored.verifier,
     }),
@@ -145,7 +142,7 @@ authRoutes.get('/callback', async (c) => {
     SESSION_COOKIE,
     await createSessionToken(
       { sub: user.id, email: user.email, name: user.name, picture: user.picture },
-      sessionSecret(env),
+      sessionSecret(env, url),
     ),
     {
       httpOnly: true,
@@ -162,8 +159,8 @@ authRoutes.get('/callback', async (c) => {
 // without Google credentials. Gated on DEV_AUTH, which production never sets.
 authRoutes.post('/dev', async (c) => {
   const env = c.env;
-  if (!isDevAuth(env)) return c.json({ error: 'disabled' }, 404);
   const url = new URL(c.req.url);
+  if (!isDevAuth(env, url)) return c.json({ error: 'disabled' }, 404);
   const user = { id: 'dev:local', email: 'dev@localhost', name: 'Dev User', picture: '' };
   await upsertUser(env.DB, user);
   setCookie(
@@ -171,7 +168,7 @@ authRoutes.post('/dev', async (c) => {
     SESSION_COOKIE,
     await createSessionToken(
       { sub: user.id, email: user.email, name: user.name, picture: user.picture },
-      sessionSecret(env),
+      sessionSecret(env, url),
     ),
     {
       httpOnly: true,
