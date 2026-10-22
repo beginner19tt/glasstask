@@ -1,0 +1,33 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "glasstask",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-06-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "observability": {
+    "enabled": true
+  },
+  // Workers AI has no local simulator; see vite.config.ts for how the dev
+  // server runs without a Cloudflare account.
+  "ai": {
+    "binding": "AI"
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "glasstask-db",
+      // Replace with the id printed by `wrangler d1 create glasstask-db`.
+      // Local dev (miniflare) ignores this value.
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "APP_ORIGIN": "http://localhost:5173",
+    "DEV_AUTH": "1"
+  }
+}

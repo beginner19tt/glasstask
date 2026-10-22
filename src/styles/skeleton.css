@@ -1,0 +1,98 @@
+/*
+ * Full-screen skeleton. It mirrors the real layout box-for-box so the reveal is
+ * a crossfade rather than a jump. The composer is NOT part of the skeleton
+ * overlay: the real input is mounted above it from the first frame, which is
+ * what keeps "open and type" true even while the shell is still loading.
+ */
+
+.skeleton {
+  position: fixed;
+  inset: 0;
+  /* Local to .shell: covers the top bar, rail and list, but not .composer. */
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: calc(var(--safe-top) + 10px) var(--pad) calc(var(--safe-bottom) + 24px);
+  background: var(--bg);
+}
+
+.sk {
+  position: relative;
+  overflow: hidden;
+  border-radius: var(--r-md);
+  background: rgba(255, 255, 255, 0.045);
+  box-shadow: inset 0 0 0 0.5px rgba(255, 255, 255, 0.07);
+}
+
+.sk::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.085) 45%,
+    rgba(255, 255, 255, 0.14) 50%,
+    rgba(255, 255, 255, 0.085) 55%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: sk-sweep 1.25s linear infinite;
+}
+
+@keyframes sk-sweep {
+  to {
+    transform: translateX(100%);
+  }
+}
+
+.sk--topbar {
+  height: 36px;
+  width: 58%;
+  border-radius: var(--r-pill);
+}
+
+.sk--composer {
+  height: calc(var(--composer-h) + 8px);
+  border-radius: var(--r-lg);
+}
+
+.sk--rail {
+  height: 48px;
+  border-radius: var(--r-pill);
+}
+
+.sk--card {
+  height: 76px;
+}
+
+.sk--card:nth-of-type(even) {
+  height: 96px;
+}
+
+.skeleton__list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* Each skeleton block starts its sweep slightly later than the one above. */
+.skeleton__list .sk:nth-child(1)::after {
+  animation-delay: 0.05s;
+}
+.skeleton__list .sk:nth-child(2)::after {
+  animation-delay: 0.12s;
+}
+.skeleton__list .sk:nth-child(3)::after {
+  animation-delay: 0.19s;
+}
+.skeleton__list .sk:nth-child(4)::after {
+  animation-delay: 0.26s;
+}
+.skeleton__list .sk:nth-child(5)::after {
+  animation-delay: 0.33s;
+}
